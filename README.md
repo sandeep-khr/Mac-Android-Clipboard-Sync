@@ -1,0 +1,1 @@
+# Mac-Android-Clipboard-Sync

@@ -1,3 +1,4 @@
+import ClipSyncCore
 import Foundation
 
 print("ClipSyncMac prototype")

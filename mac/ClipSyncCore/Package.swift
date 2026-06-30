@@ -15,6 +15,10 @@ let package = Package(
         .executable(
             name: "clipsync-cli",
             targets: ["clipsync-cli"]
+        ),
+        .executable(
+            name: "clipsync-menubar",
+            targets: ["clipsync-menubar"]
         )
     ],
     targets: [
@@ -23,6 +27,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "clipsync-cli",
+            dependencies: ["ClipSyncCore"]
+        ),
+        .executableTarget(
+            name: "clipsync-menubar",
             dependencies: ["ClipSyncCore"]
         ),
         .testTarget(

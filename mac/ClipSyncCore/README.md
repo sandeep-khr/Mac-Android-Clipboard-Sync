@@ -22,10 +22,19 @@ If this layer is noisy or unreliable, every later layer gets harder.
 
 ## How To Run
 
-From the repo root:
+The **menu bar app** (Phase 1) — a menu-bar-only app (no Dock icon):
 
 ```bash
 cd mac/ClipSyncCore
+swift run clipsync-menubar
+```
+
+A clipboard icon appears in the menu bar; the menu shows the synced-event count
+and a preview of the last copied text. Add `CLIPSYNC_DEBUG=1` for stderr logs.
+
+The headless **CLI** (prints each event, handy for development):
+
+```bash
 swift run clipsync-cli
 ```
 
@@ -50,7 +59,9 @@ Stop it with `Ctrl+C`.
 ## Project Files
 
 - `Package.swift`
-  - Swift Package Manager manifest (library + `clipsync-cli` + tests)
+  - Swift Package Manager manifest (library + `clipsync-cli` + `clipsync-menubar` + tests)
+- `Sources/clipsync-menubar/`
+  - menu bar app: `NSStatusItem` shell wiring the watcher into `AppState`
 - `Sources/clipsync-cli/main.swift`
   - dev entry point: starts the watcher and keeps the run loop alive
 - `Sources/ClipSyncCore/PasteboardWatcher.swift`

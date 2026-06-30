@@ -95,22 +95,35 @@ Tasks:
 
 ---
 
-## Phase 1 — Mac menu bar app shell
+## Phase 1 — Mac menu bar app shell ✅ DONE
 
-**Goal:** a real, friction-minimal `.app` the user can run.
+**Goal:** a real, friction-minimal menu bar app the user can run.
 
-Tasks:
-1. Create `ClipSyncMac.xcodeproj`, a menu bar (`LSUIElement`) AppKit/SwiftUI app that depends on `ClipSyncCore`.
-2. Menu shows: app status, recent-events count, "Quit", and a placeholder "Devices…" item.
-3. Wire the `PasteboardWatcher` into the app lifecycle (start on launch, stop on quit).
-4. Add **Launch at Login** (`SMAppService`) toggle.
-5. Add the **App Sandbox** entitlements needed later: outgoing/incoming network, Bonjour service `_clipsync._tcp`.
+**Approach chosen:** a SwiftPM executable target (`clipsync-menubar`) rather than
+an `.xcodeproj`. `NSApp.setActivationPolicy(.accessory)` gives a menu-bar-only
+app (no Dock icon) at runtime — the equivalent of Info.plist `LSUIElement` — so
+the whole shell builds and runs/verifies from the CLI today with no project
+generator. The app logic stays in `ClipSyncCore` (testable).
 
-**Acceptance:** building the Xcode target produces a menu bar app; copying text
-updates the recent-events count; "Launch at Login" works after reboot.
+Done:
+1. `clipsync-menubar` target: `NSStatusItem` + menu, depends on `ClipSyncCore`.
+2. Menu shows: status header, **Events synced: N**, **Last: <preview>**, a
+   disabled **Devices…** placeholder (Phase 2+), and **Quit**.
+3. `PasteboardWatcher` wired into the app lifecycle; events flow into the
+   testable `AppState` (count + single-line truncated preview).
+4. Opt-in stderr diagnostics via `CLIPSYNC_DEBUG=1` (the "local logs" deliverable);
+   never logs full clipboard contents.
+5. 5 new unit tests for `AppState` (count, latest-preview, truncation, newline
+   collapse). Full suite: 17 tests green.
 
-> Note: clipboard read on macOS needs no special permission, but Bonjour +
-> network entitlements must be in place now so Phases 2–3 don't get blocked.
+**Verified:** app launches as a menu bar item; copying text logs
+`event #N … preview=…`; duplicate content is suppressed end to end.
+
+**Deferred to a packaging step (Phase 5 UX / distribution):** wrapping in a
+signed `.app` bundle to enable **Launch at Login** (`SMAppService`) and **App
+Sandbox** entitlements (network client/server + Bonjour `_clipsync._tcp`). These
+are not needed for local dev — an unsandboxed dev binary has full network access,
+so Phases 2–3 are not blocked.
 
 ---
 

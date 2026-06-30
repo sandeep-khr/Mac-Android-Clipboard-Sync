@@ -10,6 +10,7 @@ import ClipSyncCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState()
     private var watcher: PasteboardWatcher?
+    private var advertiser: BonjourAdvertiser?
 
     private var statusItem: NSStatusItem?
     private let countItem = NSMenuItem(title: "Events synced: 0", action: nil, keyEquivalent: "")
@@ -18,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
         startWatching()
+        startAdvertising()
     }
 
     // MARK: - Menu bar
@@ -75,6 +77,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.start()
         self.watcher = watcher
     }
+
+    // MARK: - Bonjour advertising
+
+    private func startAdvertising() {
+        let identity = DeviceIdentity(
+            id: UUID().uuidString, // TODO: persist a stable id (Keychain) in a later phase
+            name: Host.current().localizedName ?? "Mac"
+        )
+        let advertiser = BonjourAdvertiser(identity: identity)
+        do {
+            try advertiser.start()
+            self.advertiser = advertiser
+            log("advertising \(ClipSyncProtocol.serviceType) as \"\(identity.name)\"")
+        } catch {
+            log("failed to start advertising: \(error)")
+        }
+    }
+
+    // MARK: - Clipboard events
 
     private func handle(_ event: ClipboardEvent) {
         state.recordSyncedEvent(event)

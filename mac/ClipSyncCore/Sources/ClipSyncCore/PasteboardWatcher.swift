@@ -2,15 +2,15 @@ import AppKit
 import Foundation
 
 @MainActor
-final class PasteboardWatcher {
+public final class PasteboardWatcher {
     private let pasteboard: NSPasteboard
     private let pollInterval: TimeInterval
     private var lastChangeCount: Int
-    private var lastSentHash: String?
+    private let eventStore = ClipboardEventStore()
     private var timer: Timer?
     private let onEvent: (ClipboardEvent) -> Void
 
-    init(
+    public init(
         pasteboard: NSPasteboard = .general,
         pollInterval: TimeInterval = 0.4,
         onEvent: @escaping (ClipboardEvent) -> Void
@@ -21,7 +21,7 @@ final class PasteboardWatcher {
         self.onEvent = onEvent
     }
 
-    func start() {
+    public func start() {
         let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.poll()
@@ -32,7 +32,7 @@ final class PasteboardWatcher {
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    func stop() {
+    public func stop() {
         timer?.invalidate()
         timer = nil
     }
@@ -54,11 +54,9 @@ final class PasteboardWatcher {
         }
 
         let hash = ClipboardNormalizer.hash(normalizedText)
-        guard hash != lastSentHash else {
+        guard eventStore.registerIfNew(hash: hash) else {
             return
         }
-
-        lastSentHash = hash
 
         onEvent(
             ClipboardEvent(

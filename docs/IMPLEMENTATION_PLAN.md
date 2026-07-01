@@ -131,17 +131,26 @@ so Phases 2–3 are not blocked.
 
 **Goal:** Android finds the Mac automatically.
 
-Mac tasks:
-1. `BonjourAdvertiser` in `ClipSyncCore` using `NWListener` with
-   `service: NWListener.Service(type: "_clipsync._tcp")`.
-2. TXT record: `device_name`, `device_id`, `protocol_version`.
-3. Pick a port (let the OS assign; advertise it via Bonjour).
+Mac tasks — ✅ DONE:
+1. `BonjourAdvertiser` in `ClipSyncCore` using `NWListener`, advertising
+   `_clipsync._tcp` (OS-assigned port).
+2. TXT record `device_name` / `device_id` / `protocol_version`, built by the
+   testable `DeviceIdentity`. Shared constants in `ClipSyncProtocol`.
+3. Wired into the menu bar app (advertises on launch).
+   **Verified** with `dns-sd`: service is discoverable and the TXT record matches
+   `docs/protocol.md`. 4 new unit tests (`DeviceIdentity`); suite 21 tests green.
 
-Android tasks (new `android/ClipSyncAndroid` project):
-1. Scaffold Kotlin app (single screen + foreground service later).
-2. `NsdDiscoveryManager` resolves `_clipsync._tcp`, lists found Macs, picks a target.
+Android tasks — ⏳ PENDING (needs Android Studio on the user's Mac + the Oppo K14):
+1. Scaffold Kotlin app (new `android/ClipSyncAndroid`).
+2. `NsdDiscoveryManager` resolves `_clipsync._tcp`, picks the Mac.
 
-**Acceptance:** Android lists the Mac by name on the same Wi-Fi; resolving yields host+port.
+**Acceptance:** Android finds the Mac by name on the same Wi-Fi; resolving yields host+port.
+
+> Direction locked: **v1 is Mac → Android only** (text, local Wi-Fi, pair once →
+> automatic). Android forbids background clipboard *reads*, so phone → Mac is a
+> later phase (likely a one-time `adb` permission grant for personal use). The
+> riskiest unknown to validate early on the Oppo: whether the app can write the
+> phone clipboard *automatically* in the background under ColorOS.
 
 ---
 

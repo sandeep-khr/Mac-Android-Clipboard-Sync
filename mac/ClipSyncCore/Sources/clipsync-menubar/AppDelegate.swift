@@ -9,8 +9,9 @@ import ClipSyncCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState()
+    private let deviceId = UUID().uuidString // TODO: persist a stable id (Keychain) later
     private var watcher: PasteboardWatcher?
-    private var advertiser: BonjourAdvertiser?
+    private var server: ClipSyncServer?
 
     private var statusItem: NSStatusItem?
     private let countItem = NSMenuItem(title: "Events synced: 0", action: nil, keyEquivalent: "")
@@ -19,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
         startWatching()
-        startAdvertising()
+        startServer()
     }
 
     // MARK: - Menu bar
@@ -78,20 +79,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.watcher = watcher
     }
 
-    // MARK: - Bonjour advertising
+    // MARK: - Server (Bonjour + WebSocket)
 
-    private func startAdvertising() {
+    private func startServer() {
         let identity = DeviceIdentity(
-            id: UUID().uuidString, // TODO: persist a stable id (Keychain) in a later phase
+            id: deviceId,
             name: Host.current().localizedName ?? "Mac"
         )
-        let advertiser = BonjourAdvertiser(identity: identity)
+        let server = ClipSyncServer(identity: identity)
         do {
-            try advertiser.start()
-            self.advertiser = advertiser
-            log("advertising \(ClipSyncProtocol.serviceType) as \"\(identity.name)\"")
+            try server.start()
+            self.server = server
+            log("server started; advertising \(ClipSyncProtocol.serviceType) as \"\(identity.name)\"")
         } catch {
-            log("failed to start advertising: \(error)")
+            log("failed to start server: \(error)")
         }
     }
 
@@ -102,6 +103,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         countItem.title = "Events synced: \(state.eventsSynced)"
         lastItem.title = "Last: \(state.lastPreview ?? "—")"
         log("event #\(state.eventsSynced) hash=\(event.hash.prefix(8)) preview=\(state.lastPreview ?? "")")
+
+        // Push it to any connected clients as a plaintext clipboard_update.
+        do {
+            let message = ClipboardUpdateMessage(event: event, origin: deviceId)
+            server?.broadcast(try message.jsonData())
+        } catch {
+            log("failed to encode clipboard_update: \(error)")
+        }
     }
 
     /// Opt-in diagnostic logging to stderr. Enable with `CLIPSYNC_DEBUG=1`.

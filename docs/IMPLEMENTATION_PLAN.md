@@ -158,12 +158,18 @@ Android tasks — ⏳ PENDING (needs Android Studio on the user's Mac + the Oppo
 
 **Goal:** Mac → Android `clipboard_update` delivery end to end.
 
-Mac tasks:
-1. `WebSocketServer` in `ClipSyncCore` via `NWListener` + `NWProtocolWebSocket.Options`.
-2. On `PasteboardWatcher` event → build a **plaintext** `clipboard_update` (no `nonce`/`ciphertext`, just `text`) → send to connected clients.
-3. Handle connect/disconnect; log (without dumping clipboard contents at info level).
+Mac tasks — ✅ DONE:
+1. `ClipSyncServer` in `ClipSyncCore` via `NWListener` + `NWProtocolWebSocket.Options`
+   — one listener that both advertises Bonjour *and* serves WebSocket (supersedes
+   the Phase 2 advertise-only `BonjourAdvertiser`).
+2. On each `PasteboardWatcher` event → build a plaintext `clipboard_update`
+   (`ClipboardUpdateMessage`, tested) → broadcast to connected clients.
+3. Connect/disconnect handling + env-gated logging (never logs clipboard text).
+   **Verified** end to end: a Node WebSocket client connected to the advertised
+   port received correct `clipboard_update` JSON for each copy. 3 new message
+   tests; suite 24 green.
 
-Android tasks:
+Android tasks — ⏳ PENDING (needs Android Studio + Oppo K14):
 1. `ClipSyncWebSocketClient` (OkHttp) connects to the resolved host/port.
 2. Parse `clipboard_update`; on receipt, write text to `ClipboardManager` via `ClipboardApplyService`.
 3. Send `ack`.

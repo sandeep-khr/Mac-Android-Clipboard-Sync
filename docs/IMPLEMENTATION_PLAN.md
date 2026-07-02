@@ -169,10 +169,13 @@ Mac tasks — ✅ DONE:
    port received correct `clipboard_update` JSON for each copy. 3 new message
    tests; suite 24 green.
 
-Android tasks — ⏳ PENDING (needs Android Studio + Oppo K14):
-1. `ClipSyncWebSocketClient` (OkHttp) connects to the resolved host/port.
-2. Parse `clipboard_update`; on receipt, write text to `ClipboardManager` via `ClipboardApplyService`.
-3. Send `ack`.
+Android tasks — 🧪 SPIKE AUTHORED, awaiting first real run on the Oppo K14:
+`android/ClipSyncAndroid/` — a minimal receiver (NSD discovery → OkHttp WebSocket
+→ parse `clipboard_update` → write to `ClipboardManager`, shown on screen too).
+No pairing/crypto/`ack`/reconnect yet. Its sole purpose is to validate the
+riskiest unknown: whether ColorOS lets the app write the clipboard. Cannot be
+compiled in the assistant's environment; expect first-run iteration. See
+`android/ClipSyncAndroid/README.md`.
 
 **Acceptance:** copy on Mac → text appears in Android clipboard within ~1s;
 duplicates suppressed; `ack` logged on Mac.

@@ -169,16 +169,25 @@ Mac tasks — ✅ DONE:
    port received correct `clipboard_update` JSON for each copy. 3 new message
    tests; suite 24 green.
 
-Android tasks — 🧪 SPIKE AUTHORED, awaiting first real run on the Oppo K14:
-`android/ClipSyncAndroid/` — a minimal receiver (NSD discovery → OkHttp WebSocket
-→ parse `clipboard_update` → write to `ClipboardManager`, shown on screen too).
-No pairing/crypto/`ack`/reconnect yet. Its sole purpose is to validate the
-riskiest unknown: whether ColorOS lets the app write the clipboard. Cannot be
-compiled in the assistant's environment; expect first-run iteration. See
-`android/ClipSyncAndroid/README.md`.
+Android tasks — ✅ SPIKE VALIDATED ON DEVICE (2026-07-17, Oppo K13 5G / ColorOS):
+`android/ClipSyncAndroid/` (NSD discovery → OkHttp WebSocket → parse
+`clipboard_update` → write to `ClipboardManager`, shown on screen too). Built via
+CLI (`./gradlew assembleDebug`) and deployed over **wireless adb**. Result:
 
-**Acceptance:** copy on Mac → text appears in Android clipboard within ~1s;
-duplicates suppressed; `ack` logged on Mac.
+- **Foreground works end to end.** Copy on Mac → discovered → connected → received
+  → **written to the system clipboard → pasted correctly in WhatsApp** (~1s). The
+  riskiest unknown — *can the app write the ColorOS clipboard* — is a confirmed
+  **yes** (in the foreground case).
+- **Background transport drops.** The moment the app loses focus (Home pressed),
+  the WebSocket disconnects (no foreground service), so a subsequent copy is
+  broadcast to 0 clients and never arrives. Background clipboard *writes* are thus
+  still untested — they're gated behind keeping the connection alive.
+
+Still no pairing/crypto/`ack`/reconnect. See `android/ClipSyncAndroid/README.md`
+and the memory note `spike-result-coloros-clipboard-write`.
+
+**Acceptance:** copy on Mac → text appears in Android clipboard within ~1s
+(✅ foreground); duplicates suppressed; `ack` logged on Mac (⏳ not yet).
 
 > This is the "development shortcut" plaintext path from `BUILD_PLAN.md` §7. It is
 > temporary scaffolding; Phase 4 replaces the plaintext body with ciphertext.
@@ -190,6 +199,17 @@ duplicates suppressed; `ack` logged on Mac.
 **Goal:** trust + authenticated encryption. Two sub-phases.
 
 ### 4a — Numeric SAS pairing + AES-GCM
+
+Mac crypto core — ✅ DONE (offline, 21 tests): `ClipSyncCore` gained
+`DeviceKeypair` (X25519), `KeyStore`/`KeychainKeyStore`/`InMemoryKeyStore`,
+`PersistentIdentity`, `TrustedDeviceStore`, `SessionCrypto` (HKDF + AES-256-GCM),
+`SASCode`, and the `HelloMessage`/`EncryptedClipboardUpdate` wire models — all
+CryptoKit-only and unit-tested, with cross-platform known-answer vectors. **Not
+yet wired into the live server** (deferred to the on-device round). Full design +
+the exact byte-level contract Android must match:
+`docs/superpowers/specs/2026-07-17-phase4a-mac-crypto-design.md`.
+
+Remaining (needs the phone):
 1. **Identity keys:** each device generates an **X25519** keypair on first run.
    Mac stores private key in **Keychain**; Android in **Keystore**-protected prefs.
 2. **Handshake:** `hello` exchanges device id + public key + `protocol_version`.

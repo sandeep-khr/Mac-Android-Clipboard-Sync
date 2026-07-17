@@ -10,6 +10,9 @@ import ClipSyncCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState()
     private let deviceId = UUID().uuidString // TODO: persist a stable id (Keychain) later
+    // Ephemeral identity key for this launch. Persistent Keychain-backed identity
+    // (PersistentIdentity/KeychainKeyStore) gets wired in with the pairing UI.
+    private let keypair = DeviceKeypair()
     private var watcher: PasteboardWatcher?
     private var server: ClipSyncServer?
 
@@ -86,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             id: deviceId,
             name: Host.current().localizedName ?? "Mac"
         )
-        let server = ClipSyncServer(identity: identity)
+        let server = ClipSyncServer(identity: identity, keypair: keypair)
         do {
             try server.start()
             self.server = server
@@ -104,13 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastItem.title = "Last: \(state.lastPreview ?? "—")"
         log("event #\(state.eventsSynced) hash=\(event.hash.prefix(8)) preview=\(state.lastPreview ?? "")")
 
-        // Push it to any connected clients as a plaintext clipboard_update.
-        do {
-            let message = ClipboardUpdateMessage(event: event, origin: deviceId)
-            server?.broadcast(try message.jsonData())
-        } catch {
-            log("failed to encode clipboard_update: \(error)")
-        }
+        // Push it to handshaken clients as an encrypted clipboard_update.
+        server?.broadcast(event: event)
     }
 
     /// Opt-in diagnostic logging to stderr. Enable with `CLIPSYNC_DEBUG=1`.

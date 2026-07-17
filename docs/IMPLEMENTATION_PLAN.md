@@ -209,7 +209,15 @@ yet wired into the live server** (deferred to the on-device round). Full design 
 the exact byte-level contract Android must match:
 `docs/superpowers/specs/2026-07-17-phase4a-mac-crypto-design.md`.
 
-Remaining (needs the phone):
+Android crypto — ✅ DONE (BouncyCastle; JVM tests reproduce the Mac KAT vectors).
+Live encrypted transport — ✅ WIRED & verified E2E on the Oppo K13 5G: `hello`
+handshake → per-connection **AES-256-GCM**; copy on Mac → arrives **decrypted** on
+the phone (verified via the app's on-screen "Last received" over adb). Uses
+**ephemeral** identity keys this iteration.
+
+What's left for full 4a: the SAS *match UI* + trust gate (currently trust-on-first-
+use, SAS is derived and logged), and persistent identity (Keychain/Keystore)
+instead of ephemeral. Target end-state:
 1. **Identity keys:** each device generates an **X25519** keypair on first run.
    Mac stores private key in **Keychain**; Android in **Keystore**-protected prefs.
 2. **Handshake:** `hello` exchanges device id + public key + `protocol_version`.

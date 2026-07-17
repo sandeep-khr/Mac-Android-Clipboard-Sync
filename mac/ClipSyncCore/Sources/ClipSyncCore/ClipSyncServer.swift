@@ -2,23 +2,28 @@ import Foundation
 import Network
 
 /// The Mac-side server: advertises `_clipsync._tcp` over Bonjour *and* accepts
-/// WebSocket connections, then broadcasts `clipboard_update` messages to every
-/// connected client (see `docs/protocol.md`).
+/// WebSocket connections. Per connection it performs the `hello` handshake
+/// (exchange public keys → derive a session key), then broadcasts **encrypted**
+/// `clipboard_update` messages to every handshaken client (see `docs/protocol.md`
+/// and `docs/pairing-flow.md`).
 ///
-/// This supersedes the Phase 2 advertise-only `BonjourAdvertiser`: one
-/// `NWListener` both publishes the service and serves WebSocket, so the port it
-/// advertises is the port clients connect to.
+/// Each connection has its own session key, so a clipboard event is sealed
+/// separately per client. Identity keys are ephemeral for now (regenerated per
+/// launch); persistent identity + the SAS match gate are the next step, and the
+/// derived SAS is already logged here for that UI.
 ///
 /// Thread-safety: all mutable state is touched only on `queue`; public methods
 /// hop onto it. Hence `@unchecked Sendable`.
 public final class ClipSyncServer: @unchecked Sendable {
     private let identity: DeviceIdentity
+    private let keypair: DeviceKeypair
     private let queue = DispatchQueue(label: "com.clipsync.server")
     private var listener: NWListener?
-    private var connections: [NWConnection] = []
+    private var clients: [ObjectIdentifier: ClientConnection] = [:]
 
-    public init(identity: DeviceIdentity) {
+    public init(identity: DeviceIdentity, keypair: DeviceKeypair) {
         self.identity = identity
+        self.keypair = keypair
     }
 
     // MARK: - Lifecycle
@@ -51,8 +56,8 @@ public final class ClipSyncServer: @unchecked Sendable {
     public func stop() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.connections.forEach { $0.cancel() }
-            self.connections.removeAll()
+            self.clients.values.forEach { $0.connection.cancel() }
+            self.clients.removeAll()
             self.listener?.cancel()
             self.listener = nil
         }
@@ -60,18 +65,23 @@ public final class ClipSyncServer: @unchecked Sendable {
 
     // MARK: - Broadcasting
 
-    /// Sends `data` as a WebSocket text frame to every connected client.
-    public func broadcast(_ data: Data) {
+    /// Seals `event` under each handshaken client's session key and sends it as an
+    /// encrypted `clipboard_update` text frame.
+    public func broadcast(event: ClipboardEvent) {
         queue.async { [weak self] in
             guard let self else { return }
-            let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
-            let context = NWConnection.ContentContext(identifier: "clipboard", metadata: [metadata])
-            for connection in self.connections {
-                connection.send(
-                    content: data,
-                    contentContext: context,
-                    completion: .contentProcessed { _ in }
-                )
+            for client in self.clients.values {
+                guard let session = client.session else { continue } // not handshaken yet
+                do {
+                    let message = try EncryptedClipboardUpdate(
+                        event: event,
+                        origin: self.identity.id,
+                        session: session
+                    )
+                    self.send(try message.jsonData(), on: client.connection)
+                } catch {
+                    self.log("failed to seal clipboard_update: \(error)")
+                }
             }
         }
     }
@@ -79,8 +89,9 @@ public final class ClipSyncServer: @unchecked Sendable {
     // MARK: - Connections (all on `queue`)
 
     private func accept(_ connection: NWConnection) {
-        connections.append(connection)
-        log("client connected (\(connections.count) total)")
+        let client = ClientConnection(connection: connection)
+        clients[ObjectIdentifier(connection)] = client
+        log("client connected (\(clients.count) total); sending hello")
 
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
@@ -90,22 +101,61 @@ public final class ClipSyncServer: @unchecked Sendable {
                 break
             }
         }
-        receive(on: connection)
+        receive(on: client)
         connection.start(queue: queue)
+
+        // Send our hello as soon as the socket is up.
+        let hello = HelloMessage(
+            deviceId: identity.id,
+            deviceName: identity.name,
+            publicKey: keypair.publicKeyBase64
+        )
+        if let data = try? hello.jsonData() {
+            send(data, on: connection)
+        }
     }
 
     private func remove(_ connection: NWConnection) {
-        connections.removeAll { $0 === connection }
-        log("client disconnected (\(connections.count) total)")
+        clients[ObjectIdentifier(connection)] = nil
+        log("client disconnected (\(clients.count) total)")
     }
 
-    /// Drains incoming frames (acks/hello). Phase 3 doesn't act on them yet, but
-    /// we must keep reading so the connection stays healthy.
-    private func receive(on connection: NWConnection) {
-        connection.receiveMessage { [weak self] _, _, _, error in
+    /// Reads one WebSocket message at a time and re-arms. The only inbound message
+    /// we act on today is the peer's `hello`; `ack`/others are ignored for now.
+    private func receive(on client: ClientConnection) {
+        client.connection.receiveMessage { [weak self] content, _, _, error in
+            guard let self else { return }
+            if let content, !content.isEmpty {
+                self.handleInbound(content, from: client)
+            }
             guard error == nil else { return }
-            self?.receive(on: connection)
+            self.receive(on: client)
         }
+    }
+
+    private func handleInbound(_ data: Data, from client: ClientConnection) {
+        guard client.session == nil,
+              let hello = try? HelloMessage.decode(data),
+              hello.type == "hello",
+              let peerPublicKey = Data(base64Encoded: hello.publicKey)
+        else {
+            return // not a hello we need, or already handshaken
+        }
+        do {
+            client.session = try SessionCrypto(ourKeypair: keypair, peerPublicKey: peerPublicKey)
+            client.peerDeviceId = hello.deviceId
+            let sas = SASCode.derive(keypair.publicKeyRaw, peerPublicKey)
+            log("handshake complete with \(hello.deviceName) [\(hello.deviceId.prefix(8))] — SAS \(sas)")
+        } catch {
+            log("handshake failed: \(error)")
+        }
+    }
+
+    /// Sends `data` as a WebSocket text frame.
+    private func send(_ data: Data, on connection: NWConnection) {
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+        let context = NWConnection.ContentContext(identifier: "clipsync", metadata: [metadata])
+        connection.send(content: data, contentContext: context, completion: .contentProcessed { _ in })
     }
 
     /// Opt-in diagnostics to stderr (`CLIPSYNC_DEBUG=1`). Never logs clipboard
@@ -113,5 +163,17 @@ public final class ClipSyncServer: @unchecked Sendable {
     private func log(_ message: String) {
         guard ProcessInfo.processInfo.environment["CLIPSYNC_DEBUG"] == "1" else { return }
         FileHandle.standardError.write(Data("[clipsync-server] \(message)\n".utf8))
+    }
+}
+
+/// Per-connection state: the socket plus, once the `hello` handshake completes,
+/// the session key used to encrypt this client's clipboard updates.
+final class ClientConnection {
+    let connection: NWConnection
+    var session: SessionCrypto?
+    var peerDeviceId: String?
+
+    init(connection: NWConnection) {
+        self.connection = connection
     }
 }

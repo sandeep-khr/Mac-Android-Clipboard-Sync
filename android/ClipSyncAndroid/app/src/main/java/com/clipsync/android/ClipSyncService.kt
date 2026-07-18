@@ -30,6 +30,8 @@ class ClipSyncService : Service() {
         const val ACTION_RECEIVED = "com.clipsync.android.RECEIVED"
         const val EXTRA_VALUE = "value"
 
+        const val ACTION_SEND_TEXT = "com.clipsync.android.SEND_TEXT"
+
         const val PREFS = "clipsync"
         const val PREF_SYNC_ENABLED = "sync_enabled"
 
@@ -61,7 +63,12 @@ class ClipSyncService : Service() {
         ).also { it.start() }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_SEND_TEXT) {
+            intent.getStringExtra(EXTRA_VALUE)?.takeIf { it.isNotEmpty() }?.let { client?.sendClipboard(it) }
+        }
+        return START_STICKY
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 

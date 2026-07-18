@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Ephemeral identity key for this launch. Persistent Keychain-backed identity
     // (PersistentIdentity/KeychainKeyStore) gets wired in with the pairing UI.
     private let keypair = DeviceKeypair()
+    private let echoSuppressor = EchoSuppressor()
     private var watcher: PasteboardWatcher?
     private var server: ClipSyncServer?
 
@@ -99,6 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: Host.current().localizedName ?? "Mac"
         )
         let server = ClipSyncServer(identity: identity, keypair: keypair)
+        server.onRemoteClipboard = { [weak self] text in
+            DispatchQueue.main.async { self?.applyRemoteClipboard(text) }
+        }
         do {
             try server.start()
             self.server = server
@@ -111,6 +115,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Clipboard events
 
     private func handle(_ event: ClipboardEvent) {
+        // Skip the pasteboard change we just made ourselves applying a remote
+        // update — otherwise we'd echo it straight back to the sender.
+        if echoSuppressor.shouldSuppress(event.hash) {
+            log("suppressed echo of remotely-applied clipboard")
+            return
+        }
+
         state.recordSyncedEvent(event)
         countItem.title = "Events synced: \(state.eventsSynced)"
         lastItem.title = "Last: \(state.lastPreview ?? "—")"
@@ -118,6 +129,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Push it to handshaken clients as an encrypted clipboard_update.
         server?.broadcast(event: event)
+    }
+
+    /// Applies a clipboard update received from a peer (Android → Mac). Records
+    /// the hash first so the resulting pasteboard change isn't echoed back.
+    private func applyRemoteClipboard(_ text: String) {
+        let hash = ClipboardNormalizer.hash(ClipboardNormalizer.normalize(text))
+        echoSuppressor.markApplied(hash)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        log("applied remote clipboard (\(text.count) chars)")
     }
 
     // MARK: - Launch at Login (SMAppService)

@@ -50,6 +50,7 @@ class ClipSyncClient(
 
     @Volatile private var running = false
     @Volatile private var session: SessionCrypto? = null
+    @Volatile private var pendingSend: String? = null
     private var webSocket: WebSocket? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -70,6 +71,35 @@ class ClipSyncClient(
         handler.removeCallbacksAndMessages(null)
         teardownSocket()
         stopDiscovery()
+    }
+
+    /**
+     * Sends local clipboard text to the Mac (Android→Mac). If the secure channel
+     * isn't up yet, the text is queued and flushed once the handshake completes
+     * (and a cold start is kicked off) — so a tile tap works even when idle.
+     */
+    fun sendClipboard(text: String) {
+        val active = session
+        val socket = webSocket
+        if (active != null && socket != null) {
+            socket.send(buildUpdate(active, text))
+        } else {
+            pendingSend = text
+            if (!running) start()
+        }
+    }
+
+    private fun buildUpdate(active: SessionCrypto, text: String): String {
+        val sealed = active.seal(text) // (nonce, ciphertext)
+        return JSONObject().apply {
+            put("type", "clipboard_update")
+            put("eventId", UUID.randomUUID().toString())
+            put("origin", deviceId)
+            put("timestamp", System.currentTimeMillis() / 1000)
+            put("mimeType", "text/plain")
+            put("nonce", sealed.first)
+            put("ciphertext", sealed.second)
+        }.toString()
     }
 
     // MARK: - Connection lifecycle
@@ -228,6 +258,7 @@ class ClipSyncClient(
                     val peerPublicKey = Base64.getDecoder().decode(json.getString("publicKey"))
                     session = SessionCrypto(keypair, peerPublicKey)
                     onStatus("Connected ✅  Copy text on your Mac.")
+                    pendingSend?.let { queued -> pendingSend = null; sendClipboard(queued) }
                 }
                 "clipboard_update" -> decryptUpdate(json)?.let(onClipboardText)
             }

@@ -21,6 +21,10 @@ public final class ClipSyncServer: @unchecked Sendable {
     private var listener: NWListener?
     private var clients: [ObjectIdentifier: ClientConnection] = [:]
 
+    /// Called on `queue` when a peer sends us a clipboard update (the Android→Mac
+    /// direction). The app applies the decrypted text to `NSPasteboard`.
+    public var onRemoteClipboard: (@Sendable (String) -> Void)?
+
     public init(identity: DeviceIdentity, keypair: DeviceKeypair) {
         self.identity = identity
         self.keypair = keypair
@@ -134,20 +138,30 @@ public final class ClipSyncServer: @unchecked Sendable {
     }
 
     private func handleInbound(_ data: Data, from client: ClientConnection) {
-        guard client.session == nil,
-              let hello = try? HelloMessage.decode(data),
-              hello.type == "hello",
-              let peerPublicKey = Data(base64Encoded: hello.publicKey)
-        else {
-            return // not a hello we need, or already handshaken
+        // Handshake first: derive the session key from the peer's hello.
+        if client.session == nil {
+            guard let hello = try? HelloMessage.decode(data), hello.type == "hello",
+                  let peerPublicKey = Data(base64Encoded: hello.publicKey) else { return }
+            do {
+                client.session = try SessionCrypto(ourKeypair: keypair, peerPublicKey: peerPublicKey)
+                client.peerDeviceId = hello.deviceId
+                let sas = SASCode.derive(keypair.publicKeyRaw, peerPublicKey)
+                log("handshake complete with \(hello.deviceName) [\(hello.deviceId.prefix(8))] — SAS \(sas)")
+            } catch {
+                log("handshake failed: \(error)")
+            }
+            return
         }
+
+        // Encrypted clipboard update from the peer (Android → Mac).
+        guard let session = client.session,
+              let update = try? JSONDecoder().decode(EncryptedClipboardUpdate.self, from: data),
+              update.type == "clipboard_update" else { return }
         do {
-            client.session = try SessionCrypto(ourKeypair: keypair, peerPublicKey: peerPublicKey)
-            client.peerDeviceId = hello.deviceId
-            let sas = SASCode.derive(keypair.publicKeyRaw, peerPublicKey)
-            log("handshake complete with \(hello.deviceName) [\(hello.deviceId.prefix(8))] — SAS \(sas)")
+            let text = try session.open(nonce: update.nonce, ciphertext: update.ciphertext)
+            onRemoteClipboard?(text)
         } catch {
-            log("handshake failed: \(error)")
+            log("failed to open inbound clipboard_update: \(error)")
         }
     }
 
@@ -168,7 +182,9 @@ public final class ClipSyncServer: @unchecked Sendable {
 
 /// Per-connection state: the socket plus, once the `hello` handshake completes,
 /// the session key used to encrypt this client's clipboard updates.
-final class ClientConnection {
+///
+/// Only ever touched on `ClipSyncServer.queue`, hence `@unchecked Sendable`.
+final class ClientConnection: @unchecked Sendable {
     let connection: NWConnection
     var session: SessionCrypto?
     var peerDeviceId: String?

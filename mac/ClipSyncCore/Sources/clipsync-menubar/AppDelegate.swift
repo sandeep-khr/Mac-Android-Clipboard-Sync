@@ -1,5 +1,6 @@
 import AppKit
 import ClipSyncCore
+import ServiceManagement
 
 /// Menu bar controller for ClipSync.
 ///
@@ -13,12 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Ephemeral identity key for this launch. Persistent Keychain-backed identity
     // (PersistentIdentity/KeychainKeyStore) gets wired in with the pairing UI.
     private let keypair = DeviceKeypair()
+    private let echoSuppressor = EchoSuppressor()
     private var watcher: PasteboardWatcher?
     private var server: ClipSyncServer?
 
     private var statusItem: NSStatusItem?
     private let countItem = NSMenuItem(title: "Events synced: 0", action: nil, keyEquivalent: "")
     private let lastItem = NSMenuItem(title: "Last: —", action: nil, keyEquivalent: "")
+    private let launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
@@ -62,6 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        launchAtLoginItem.target = self
+        launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
+        menu.addItem(launchAtLoginItem)
+        refreshLaunchAtLoginState()
+
+        menu.addItem(.separator())
+
         let quit = NSMenuItem(
             title: "Quit ClipSync",
             action: #selector(NSApplication.terminate(_:)),
@@ -90,6 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: Host.current().localizedName ?? "Mac"
         )
         let server = ClipSyncServer(identity: identity, keypair: keypair)
+        server.onRemoteClipboard = { [weak self] text in
+            DispatchQueue.main.async { self?.applyRemoteClipboard(text) }
+        }
         do {
             try server.start()
             self.server = server
@@ -102,6 +115,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Clipboard events
 
     private func handle(_ event: ClipboardEvent) {
+        // Skip the pasteboard change we just made ourselves applying a remote
+        // update — otherwise we'd echo it straight back to the sender.
+        if echoSuppressor.shouldSuppress(event.hash) {
+            log("suppressed echo of remotely-applied clipboard")
+            return
+        }
+
         state.recordSyncedEvent(event)
         countItem.title = "Events synced: \(state.eventsSynced)"
         lastItem.title = "Last: \(state.lastPreview ?? "—")"
@@ -109,6 +129,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Push it to handshaken clients as an encrypted clipboard_update.
         server?.broadcast(event: event)
+    }
+
+    /// Applies a clipboard update received from a peer (Android → Mac). Records
+    /// the hash first so the resulting pasteboard change isn't echoed back.
+    private func applyRemoteClipboard(_ text: String) {
+        let hash = ClipboardNormalizer.hash(ClipboardNormalizer.normalize(text))
+        echoSuppressor.markApplied(hash)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        log("applied remote clipboard (\(text.count) chars)")
+    }
+
+    // MARK: - Launch at Login (SMAppService)
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+        } catch {
+            // Fails when run as a bare binary (not a .app bundle) — e.g. `swift run`.
+            log("launch-at-login toggle failed: \(error)")
+        }
+        refreshLaunchAtLoginState()
+    }
+
+    private func refreshLaunchAtLoginState() {
+        launchAtLoginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
     /// Opt-in diagnostic logging to stderr. Enable with `CLIPSYNC_DEBUG=1`.

@@ -30,14 +30,23 @@ class ClipSyncService : Service() {
         const val ACTION_RECEIVED = "com.clipsync.android.RECEIVED"
         const val EXTRA_VALUE = "value"
 
+        const val ACTION_SEND_TEXT = "com.clipsync.android.SEND_TEXT"
+
+        const val PREFS = "clipsync"
+        const val PREF_SYNC_ENABLED = "sync_enabled"
+
         private const val CHANNEL_ID = "clipsync_sync"
         private const val NOTIFICATION_ID = 1
     }
 
     private var client: ClipSyncClient? = null
+    private var clipboardMonitor: ClipboardMonitor? = null
 
     override fun onCreate() {
         super.onCreate()
+        // Remember that sync is on, so BootReceiver restarts us after a reboot.
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(PREF_SYNC_ENABLED, true).apply()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Starting…", null))
 
@@ -53,13 +62,24 @@ class ClipSyncService : Service() {
                 broadcast(ACTION_RECEIVED, text)
             }
         ).also { it.start() }
+
+        // Automatic Android→Mac capture, if the one-time adb grants are present;
+        // otherwise the tile / share routes remain the way to push.
+        clipboardMonitor = ClipboardMonitor(this).also { it.start() }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_SEND_TEXT) {
+            intent.getStringExtra(EXTRA_VALUE)?.takeIf { it.isNotEmpty() }?.let { client?.sendClipboard(it) }
+        }
+        return START_STICKY
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        clipboardMonitor?.stop()
+        clipboardMonitor = null
         client?.stop()
         client = null
         super.onDestroy()

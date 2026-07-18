@@ -243,8 +243,18 @@ QR pairing completes without typing.
 
 **Goal:** stable enough for daily use.
 
+Foreground service — ✅ DONE & VALIDATED ON DEVICE (2026-07-17, Oppo K13 5G):
+`ClipSyncService` (`foregroundServiceType="dataSync"` + persistent notification)
+hosts the connection so it survives the app being backgrounded. Confirmed on
+device: socket stays alive when backgrounded, the service receives + decrypts in
+the background, and **ColorOS honors the background clipboard write** (a
+background-copied token pasted correctly in WhatsApp). This retires the core
+product risk — no accessibility-service workaround needed. See the memory note
+`spike-result-coloros-clipboard-write`.
+
+Still to do in this phase:
 - Android **reconnect** state machine (Wi-Fi change, app restart, Mac sleep/wake).
-- Android **foreground service** + persistent notification so receive keeps working.
+  Currently no reconnect — if the Mac drops, the service stays up but idle.
 - **Echo-suppression** via `origin` device id (prep for bidirectional).
 - Mac menu: connected devices, last-synced time, pause toggle, unpair.
 - Android: trusted-Mac management, pause toggle.

@@ -40,6 +40,7 @@ class ClipSyncService : Service() {
     }
 
     private var client: ClipSyncClient? = null
+    private var clipboardMonitor: ClipboardMonitor? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +62,10 @@ class ClipSyncService : Service() {
                 broadcast(ACTION_RECEIVED, text)
             }
         ).also { it.start() }
+
+        // Automatic Android→Mac capture, if the one-time adb grants are present;
+        // otherwise the tile / share routes remain the way to push.
+        clipboardMonitor = ClipboardMonitor(this).also { it.start() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,6 +78,8 @@ class ClipSyncService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        clipboardMonitor?.stop()
+        clipboardMonitor = null
         client?.stop()
         client = null
         super.onDestroy()

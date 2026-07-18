@@ -1,5 +1,6 @@
 import AppKit
 import ClipSyncCore
+import ServiceManagement
 
 /// Menu bar controller for ClipSync.
 ///
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let countItem = NSMenuItem(title: "Events synced: 0", action: nil, keyEquivalent: "")
     private let lastItem = NSMenuItem(title: "Last: —", action: nil, keyEquivalent: "")
+    private let launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
@@ -59,6 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let devices = NSMenuItem(title: "Devices…", action: nil, keyEquivalent: "")
         devices.isEnabled = false
         menu.addItem(devices)
+
+        menu.addItem(.separator())
+
+        launchAtLoginItem.target = self
+        launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
+        menu.addItem(launchAtLoginItem)
+        refreshLaunchAtLoginState()
 
         menu.addItem(.separator())
 
@@ -109,6 +118,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Push it to handshaken clients as an encrypted clipboard_update.
         server?.broadcast(event: event)
+    }
+
+    // MARK: - Launch at Login (SMAppService)
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+        } catch {
+            // Fails when run as a bare binary (not a .app bundle) — e.g. `swift run`.
+            log("launch-at-login toggle failed: \(error)")
+        }
+        refreshLaunchAtLoginState()
+    }
+
+    private func refreshLaunchAtLoginState() {
+        launchAtLoginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
     /// Opt-in diagnostic logging to stderr. Enable with `CLIPSYNC_DEBUG=1`.

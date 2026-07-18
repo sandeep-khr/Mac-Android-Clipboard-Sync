@@ -168,7 +168,9 @@ public final class ClipSyncServer: @unchecked Sendable {
 
 /// Per-connection state: the socket plus, once the `hello` handshake completes,
 /// the session key used to encrypt this client's clipboard updates.
-final class ClientConnection {
+///
+/// Only ever touched on `ClipSyncServer.queue`, hence `@unchecked Sendable`.
+final class ClientConnection: @unchecked Sendable {
     let connection: NWConnection
     var session: SessionCrypto?
     var peerDeviceId: String?

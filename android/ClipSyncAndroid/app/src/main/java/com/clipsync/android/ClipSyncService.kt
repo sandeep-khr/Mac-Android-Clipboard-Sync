@@ -30,6 +30,9 @@ class ClipSyncService : Service() {
         const val ACTION_RECEIVED = "com.clipsync.android.RECEIVED"
         const val EXTRA_VALUE = "value"
 
+        const val PREFS = "clipsync"
+        const val PREF_SYNC_ENABLED = "sync_enabled"
+
         private const val CHANNEL_ID = "clipsync_sync"
         private const val NOTIFICATION_ID = 1
     }
@@ -38,6 +41,9 @@ class ClipSyncService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Remember that sync is on, so BootReceiver restarts us after a reboot.
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(PREF_SYNC_ENABLED, true).apply()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Starting…", null))
 

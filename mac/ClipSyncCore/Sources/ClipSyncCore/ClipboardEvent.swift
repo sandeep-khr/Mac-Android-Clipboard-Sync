@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ClipboardEvent: CustomStringConvertible {
+public struct ClipboardEvent: CustomStringConvertible, Sendable {
     public let id: UUID
     public let timestamp: Date
     public let text: String

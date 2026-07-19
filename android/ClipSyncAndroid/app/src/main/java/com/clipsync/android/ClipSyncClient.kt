@@ -17,6 +17,7 @@ import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 /**
@@ -42,7 +43,12 @@ class ClipSyncClient(
     private val serviceType = "_clipsync._tcp."
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    private val httpClient = OkHttpClient()
+    // Ping the Mac every 15s. The Mac auto-replies pings, so a dead/gone server
+    // fails a ping and OkHttp fires onFailure → reconnect. Without this, a silently
+    // dead connection is never noticed (no data flowing = no error).
+    private val httpClient = OkHttpClient.Builder()
+        .pingInterval(15, TimeUnit.SECONDS)
+        .build()
     private val handler = Handler(Looper.getMainLooper())
 
     private val keypair = DeviceKeypair.generate()

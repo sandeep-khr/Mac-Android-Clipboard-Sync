@@ -1,27 +1,30 @@
 package com.clipsync.android
 
 import android.Manifest
+import android.app.StatusBarManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 
 /**
- * Thin UI: a Connect button that starts the foreground sync service, plus two
- * text views that mirror the service's status / last-received via broadcasts.
- *
- * The connection itself lives in `ClipSyncService` (Phase 5) so it survives the
- * activity being backgrounded — the Activity is now just a window onto it.
+ * Zero-tap UI: opening the app just starts syncing (the connection lives in
+ * `ClipSyncService`, which survives backgrounding and reboots). The two unavoidable
+ * Android permissions are requested once on first run; after that the user never
+ * touches this screen — it's just a status window.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var statusView: TextView
@@ -43,7 +46,11 @@ class MainActivity : AppCompatActivity() {
 
         statusView = findViewById(R.id.status)
         receivedView = findViewById(R.id.received)
-        findViewById<Button>(R.id.connect).setOnClickListener { startSync() }
+        findViewById<MaterialButton>(R.id.add_tile).setOnClickListener { requestAddTile() }
+
+        onFirstRunRequestPermissions()
+        // Auto-connect: opening the app is enough — no button to tap.
+        ContextCompat.startForegroundService(this, Intent(this, ClipSyncService::class.java))
     }
 
     override fun onStart() {
@@ -60,16 +67,18 @@ class MainActivity : AppCompatActivity() {
         unregisterReceiver(receiver)
     }
 
-    private fun startSync() {
-        // The foreground-service notification needs POST_NOTIFICATIONS on 13+.
+    /** First launch only: notifications (for the sync notification) + battery exemption. */
+    private fun onFirstRunRequestPermissions() {
+        val prefs = getSharedPreferences(ClipSyncService.PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean("onboarded", false)) return
+        prefs.edit().putBoolean("onboarded", true).apply()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         requestBatteryExemption()
-        statusView.text = "Starting sync service…"
-        ContextCompat.startForegroundService(this, Intent(this, ClipSyncService::class.java))
     }
 
     /** Ask to be exempt from battery optimization so ColorOS doesn't kill sync. */
@@ -84,7 +93,22 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         } catch (_: Exception) {
-            // Some OEMs don't expose this screen; the setup guidance covers it manually.
         }
+    }
+
+    /** One-tap prompt to add the "Send to Mac" Quick Settings tile (Android 13+). */
+    private fun requestAddTile() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(this, "Add the tile from Quick Settings → edit", Toast.LENGTH_LONG).show()
+            return
+        }
+        val sbm = getSystemService(StatusBarManager::class.java)
+        sbm.requestAddTileService(
+            ComponentName(this, ClipSyncTileService::class.java),
+            "Send to Mac",
+            Icon.createWithResource(this, R.drawable.ic_clipsync_notification),
+            { it.run() },
+            { /* result code — nothing to do */ }
+        )
     }
 }

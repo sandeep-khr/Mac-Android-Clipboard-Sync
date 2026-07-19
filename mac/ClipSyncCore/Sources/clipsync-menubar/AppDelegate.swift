@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var server: ClipSyncServer?
 
     private var statusItem: NSStatusItem?
+    private let deviceItem = NSMenuItem(title: "No device connected", action: nil, keyEquivalent: "")
     private let countItem = NSMenuItem(title: "Events synced: 0", action: nil, keyEquivalent: "")
     private let lastItem = NSMenuItem(title: "Last: —", action: nil, keyEquivalent: "")
     private let launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: "")
@@ -58,10 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        // Placeholder for Phase 2+ (discovery / pairing).
-        let devices = NSMenuItem(title: "Devices…", action: nil, keyEquivalent: "")
-        devices.isEnabled = false
-        menu.addItem(devices)
+        deviceItem.isEnabled = false
+        menu.addItem(deviceItem)
 
         menu.addItem(.separator())
 
@@ -102,6 +101,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let server = ClipSyncServer(identity: identity, keypair: keypair)
         server.onRemoteClipboard = { [weak self] text in
             DispatchQueue.main.async { self?.applyRemoteClipboard(text) }
+        }
+        server.onPeerConnected = { [weak self] name in
+            DispatchQueue.main.async { self?.deviceItem.title = "📱 \(name) — connected" }
+        }
+        server.onPeerDisconnected = { [weak self] in
+            DispatchQueue.main.async { self?.deviceItem.title = "No device connected" }
         }
         do {
             try server.start()

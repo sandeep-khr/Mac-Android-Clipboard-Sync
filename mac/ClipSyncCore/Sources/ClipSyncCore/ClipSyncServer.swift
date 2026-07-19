@@ -25,6 +25,11 @@ public final class ClipSyncServer: @unchecked Sendable {
     /// direction). The app applies the decrypted text to `NSPasteboard`.
     public var onRemoteClipboard: (@Sendable (String) -> Void)?
 
+    /// Called on `queue` after a peer completes the handshake (with its name), and
+    /// when a peer disconnects — for the menu's "connected device" line.
+    public var onPeerConnected: (@Sendable (String) -> Void)?
+    public var onPeerDisconnected: (@Sendable () -> Void)?
+
     public init(identity: DeviceIdentity, keypair: DeviceKeypair) {
         self.identity = identity
         self.keypair = keypair
@@ -120,8 +125,10 @@ public final class ClipSyncServer: @unchecked Sendable {
     }
 
     private func remove(_ connection: NWConnection) {
+        let hadSession = clients[ObjectIdentifier(connection)]?.session != nil
         clients[ObjectIdentifier(connection)] = nil
         log("client disconnected (\(clients.count) total)")
+        if hadSession { onPeerDisconnected?() }
     }
 
     /// Reads one WebSocket message at a time and re-arms. The only inbound message
@@ -147,6 +154,7 @@ public final class ClipSyncServer: @unchecked Sendable {
                 client.peerDeviceId = hello.deviceId
                 let sas = SASCode.derive(keypair.publicKeyRaw, peerPublicKey)
                 log("handshake complete with \(hello.deviceName) [\(hello.deviceId.prefix(8))] — SAS \(sas)")
+                onPeerConnected?(hello.deviceName)
             } catch {
                 log("handshake failed: \(error)")
             }

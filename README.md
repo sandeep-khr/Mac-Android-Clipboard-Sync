@@ -12,7 +12,6 @@ Like Apple's Universal Clipboard, but for Mac ↔ Android over your local Wi-Fi 
 
 ### [⬇ Download the latest release](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/releases/latest)
 
-<img src="docs/assets/hero.png" alt="ClipSync — copy on your Mac, it appears on your Android phone" width="840">
 
 </div>
 

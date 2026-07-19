@@ -21,7 +21,24 @@ close to "it just works" as the platform allows.
 - Encrypted end-to-end (X25519 + AES-256-GCM), reconnects automatically after
   Wi-Fi drops or sleep/wake, survives phone reboots.
 
-## Setup
+## Install
+
+Grab the latest build from the [**Releases**](../../releases) page:
+
+- **Android** — download `ClipSync-android.apk`, open it on your phone, allow
+  "install unknown apps" if prompted. Open it once and it auto-connects.
+- **Mac** — download `ClipSync-mac.zip`, unzip, drag `ClipSync.app` to
+  Applications. It's ad-hoc signed (not notarized — I don't have a paid Apple
+  Developer account), so macOS blocks it on first open. Clear the quarantine flag
+  once, then open it:
+  ```
+  xattr -dr com.apple.quarantine /Applications/ClipSync.app
+  ```
+  A clipboard icon appears in the menu bar — turn on **Launch at Login** from it.
+
+Both devices must be on the **same Wi-Fi**.
+
+## Build from source
 
 1. Build and run the Mac app (`mac/ClipSyncCore` — `swift run clipsync-menubar`,
    or use `mac/build-app.sh` to get a proper `.app` you can add to Login Items).

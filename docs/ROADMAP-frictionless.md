@@ -32,18 +32,25 @@ Ordered by friction. KDE Connect ships #1–#3. [confirmed]
    foreground-service notification. Always works, one tap per push. [confirmed]
 2. **Quick Settings tile** — a "Send clipboard" tile in the pull-down shade
    (Android 14+). One tap, always works, no special permission. [confirmed]
-3. **Automatic via one-time adb grant (the KDE Connect trick)** [confirmed]:
+3. **Automatic via one-time adb grant (the KDE Connect trick)** [confirmed in general]
+   — but **⛔ BLOCKED on this Oppo/ColorOS 15 device** (verified on-device 2026-07-19):
    ```
    adb shell pm grant <pkg> android.permission.READ_LOGS
+     → SecurityException: Neither user 2000 nor current process has GRANT_RUNTIME_PERMISSIONS
    adb shell appops set <pkg> SYSTEM_ALERT_WINDOW allow
-   adb shell am force-stop <pkg>
+     → SecurityException: uid 2000 does not have MANAGE_APP_OPS_MODES
    ```
-   The app watches **its own logcat** for the "denied clipboard access" line the
-   system prints on a copy, then briefly raises an **invisible focused window** to
-   legally read the clipboard and closes it. Fully automatic; survives reboot
-   (grants persist). Note: it is **not** an `appops READ_CLIPBOARD allow` grant —
-   that op isn't grantable per-app; READ_LOGS + SYSTEM_ALERT_WINDOW is the real
-   recipe.
+   ColorOS locks the adb shell out of granting runtime permissions and app-ops
+   (also seen earlier with `POST_NOTIFICATIONS`). So the automatic route is not
+   reachable on this device via plain adb. The code (`ClipboardMonitor`) is built
+   and degrades gracefully — `start()` returns false and the tile/share routes
+   remain. Possible unlocks (untested, often gated on the global ROM): the ColorOS
+   dev-options toggles **"USB debugging (Security settings)"** and/or **"Disable
+   permission monitoring"**; or **Shizuku** (but it runs as the same shell uid, so
+   likely hits the same wall). Where it *does* work, the app watches its own logcat
+   for the "denied clipboard access" line and raises an invisible focused window to
+   read the clipboard. (Not an `appops READ_CLIPBOARD allow` grant — that op isn't
+   grantable per-app; READ_LOGS + SYSTEM_ALERT_WINDOW is the real recipe.)
 4. **Default IME** — a keyboard app can always read the clipboard, but switching
    the user's daily keyboard is heavy. Not pursuing.
 5. **Share-sheet target** — highest friction, always works. Cheap fallback.

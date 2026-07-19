@@ -4,8 +4,8 @@ Copy on your Mac, paste on your Android phone (and back). Like Apple's
 Universal Clipboard, but for Mac ↔ Android over your local Wi-Fi — no cloud,
 no account, no cable.
 
-Built this because I got tired of AirDropping/emailing myself snippets between
-a Mac and an Android phone. Android makes clipboard sync annoying (it blocks
+Built this because I got tired of sending WhatsApp/emailing myself snippets
+between a Mac and an Android phone. Android makes clipboard sync annoying (it blocks
 background apps from reading the clipboard), so this is my attempt to get as
 close to "it just works" as the platform allows.
 

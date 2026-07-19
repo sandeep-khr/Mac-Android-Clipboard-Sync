@@ -6,9 +6,8 @@
 Like Apple's Universal Clipboard, but for Mac ↔ Android over your local Wi-Fi — no cloud, no account, no cable.
 
 [![CI](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/actions/workflows/ci.yml/badge.svg)](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/sandeep-khr/Mac-Android-Clipboard-Sync?color=8b5cf6)](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/sandeep-khr/Mac-Android-Clipboard-Sync/total?color=22c55e)](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/badge/release-v0.1.0-8b5cf6)](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Android-lightgrey)
 
 ### [⬇ Download the latest release](https://github.com/sandeep-khr/Mac-Android-Clipboard-Sync/releases/latest)
